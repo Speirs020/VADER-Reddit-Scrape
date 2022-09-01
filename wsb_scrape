@@ -1,0 +1,119 @@
+## import packages and set wd
+path_dump = 'x' #
+import os
+import praw
+import time
+import pandas as pd
+import datetime as dt
+from pmaw import PushshiftAPI
+os.getcwd()
+os.chdir
+
+## specify date
+def get_date(created):
+  return dt.datetime.frometimestamp(created)
+  
+## pull, search for specific ticker, 
+def submission_pull(search_,start_,end_,amount_):
+    api                  = PushshiftAPI(file_checkpoint=10)
+    before_date          = int(start_.timestamp())
+    after_date           = int(end_.timestamp())
+    features             = [ 
+        'id', 'created_utc', 'retrieved_on', 
+        'subreddit', 'subreddit_id', 'subreddit_subscribers',  'permalink', 
+        'title', 'url', 'domain', 'full_link', 
+        'author', 'author_fullname',  
+        'link_flair_text', 'num_comments', 'score', 'selftext'
+    ]
+    submissions          = api.search_submissions(
+        subreddit="wallstreetbets", 
+        q = search_,
+        limit=amount_, 
+        before=after_date, 
+        after=before_date,
+        safe_exit=True,
+        mem_safe=True
+    )
+    df                  = pd.DataFrame(submissions)
+    df                  = df[features]
+    df['date_on']       = df["retrieved_on"].apply(get_date)
+    df['date_utc']      = df["created_utc"].apply(get_date)
+    df['search_q']      = search_
+    df                  = df.sort_values(by=['num_comments', 'score'], ascending=False)
+    print(f'Retrieved {df.shape[0]} submissions from Pushshift for {search_}')
+    print(f'Retrieved {df.shape[1]} features within the submissions from Pushshift for {search_}')
+    return df
+    
+    def comments_focus_ids(search_, path_file_, focus_score_, focus_comment_):
+    ## part 1: first search for IDs based on submission file
+    submission_focus = pd.read_csv(path_file_).sort_values(["score", "num_comments"], ascending = (False, False))
+    submission_focus = submission_focus[submission_focus["search_q"] == search_]
+    submission_focus = submission_focus[submission_focus["score"] >= focus_score_]
+    submission_focus = submission_focus[submission_focus["num_comments"] >= focus_comment_]
+    print(f'amount of submissions left after filter {submission_focus.shape[0]}')
+    api              = PushshiftAPI(file_checkpoint=10)
+    sub_ids          = list(submission_focus.loc[:, 'id']) 
+    comment_ids      = api.search_submission_comment_ids(ids=sub_ids)
+    comment_ids      = list(comment_ids)
+
+    ## part 2: gather comments based on IDs
+    print(f'amount of comments to focus on: {len(comment_ids)} comments leveraging Pushshift')    
+    api                                           = PushshiftAPI(file_checkpoint=10)
+    features                                      = [
+        'id', 'parent_id', 'retrieved_on',
+        'subreddit', 'subreddit_id', 
+        'author', 'score', 'permalink', 'body'
+    ]
+    comments_focus                                = api.search_comments(
+        ids=comment_ids,
+        mem_safe=True
+    )
+    df              = pd.DataFrame(comments_focus)
+    df              = df[features]
+    df['date_on']   = df["retrieved_on"].apply(get_date)
+    df['search_q']  = search_
+    df              = df.sort_values(by=['score'], ascending=False)
+    print(f'Retrieved {df.shape[0]} comments from Pushshift')
+    print(f'Retrieved {df.shape[1]} features within the comments from Pushshift')
+    print('')
+    df.to_csv( f"{path_dump}/comments/wallstreetbets_comment_{search_}.csv", header=True, index=False )
+    return df
+    
+    df_GME = submission_pull(
+    search_ = 'GME',
+    start_  = dt.datetime(2021,1,18,0,0), 
+    end_    = dt.datetime(2021,2,4,0,0), 
+    amount_ = 10000
+)
+df_GME_2 = submission_pull(
+    search_ = 'GME',
+    start_  = dt.datetime(2021,2,20,0,0), 
+    end_    = dt.datetime(2021,3,24,0,0), 
+    amount_ = 10000
+)
+df_GME_3 = submission_pull(
+    search_ = 'GME',
+    start_  = dt.datetime(2021,5,20,0,0), 
+    end_    = dt.datetime(2021,6,10,0,0), 
+    amount_ = 10000)
+    
+    df_join = df_GME\
+            .append(df_GME_2, ignore_index=True)\
+            .append(df_GME_3, ignore_index=True)\
+       
+df_join.to_csv( f"{path_dump}wallstreetbets_submission_focus.csv", header=True, index=False )
+df_join.to_pickle( f"{path_dump}wallstreetbets_submission_focus.pkl")
+df_join.shape
+
+df_comments_GME = comments_focus_ids(
+    search_         = 'GME', 
+    path_file_      = f'{path_dump}wallstreetbets_submission_focus.csv', 
+    focus_score_    = 10, 
+    focus_comment_  = 1
+)
+df_join_comments = df_comments_GME\
+        
+df_join_comments.to_csv( f"{path_dump}wallstreetbets_comment_focus.csv", header=True, index=False )
+df_join_comments.to_pickle( f"{path_dump}wallstreetbets_comment_focus.pkl")
+df_join_comments.shape
+
