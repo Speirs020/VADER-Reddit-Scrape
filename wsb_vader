@@ -1,0 +1,172 @@
+import string
+
+import re
+import os 
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+import nltk
+from nltk.tokenize import word_tokenize
+from nltk.stem import WordNetLemmatizer, PorterStemmer, SnowballStemmer, LancasterStemmer
+from nltk.corpus import stopwords
+
+nltk.download("stopwords")
+nltk.download('wordnet')
+nltk.download('punkt')
+stop_words = set(stopwords.words("english"))
+
+from unidecode import unidecode
+from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
+analyzer = SentimentIntensityAnalyzer()
+
+%matplotlib inline
+
+os.getcwd()
+
+path_raw        = 'x'
+df              = pd.read_pickle (f'{path_raw}Scrapewallstreetbets_comment_focus.pkl')
+df["body"] = df["body"].astype(str)
+df.dtypes
+
+path_dump = 'x'
+path_raw        = 'C:x/'
+df              = pd.read_pickle (f'{path_raw}Scrapewallstreetbets_comment_focus.pkl')
+df["body"] = df["body"].astype(str)
+df.dtypes
+
+## Remove URL
+def remove_urls(text):
+    url_pattern = re.compile(r'https?://\S+|www\.\S+')
+    return url_pattern.sub(r'', text)
+
+## Remove punctuation
+def remove_punctuation(text):
+    return text.translate(str.maketrans('', '', string.punctuation))
+
+## Remove stopwords
+def remove_stop_words(text):
+    return " ".join([word for word in text.split() if word not in stop_words])
+
+## Remove mentions
+def remove_mentions(text):
+    return re.sub("@\S+", "", text)
+
+## Remove spaces
+def remove_spaces(text):
+    return re.sub('\\s+', ' ', text)
+
+## Remove double quotes
+def remove_double_quotes(text):
+     return re.sub('"', '', text)
+    
+## Remove single quotes
+def remove_single_quotes(text):
+     return re.sub('\'', '', text)
+    
+## Remove emoticons
+def remove_emoji(string):
+    emoji_pattern = re.compile("["
+#                                u"\U0001F600-\U0001F64F"  # emoticons
+#                                u"\U0001F300-\U0001F5FF"  # symbols & pictographs
+#                                u"\U0001F680-\U0001F6FF"  # transport & map symbols
+                               u"\U0001F1E0-\U0001F1FF"  # flags (iOS)
+                               u"\U00002500-\U00002BEF"  # chinese char
+                               u"\U00002702-\U000027B0"
+                               u"\U00002702-\U000027B0"
+                               u"\U000024C2-\U0001F251"
+                               u"\U0001f926-\U0001f937"
+                               u"\U00010000-\U0010ffff"
+                               u"\u2640-\u2642"
+                               u"\u2600-\u2B55"
+                               u"\u200d"
+                               u"\u23cf"
+                               u"\u23e9"
+                               u"\u231a"
+                               u"\ufe0f"  # dingbats
+                               u"\u3030"
+                               "]+", flags=re.UNICODE)
+    return emoji_pattern.sub(r'', string) 
+
+## lower case
+def lower_case_text(text):
+    return text.lower()
+
+## Trim whitespaces
+def trim(text):
+    return text.strip()
+
+## Stemming
+def porter_stemmer(text):
+    porter     = PorterStemmer()
+    tokenized  = word_tokenize(text)
+    stemmed    = [porter.stem(word) for word in tokenized]
+    return ' '.join(stemmed)
+
+def snowball_stemmer(text):
+    snowball   = SnowballStemmer(language='english')
+    tokenized  = word_tokenize(text)
+    stemmed    = [snowball.stem(word) for word in tokenized]
+    return ' '.join(stemmed)
+
+def lancaster_stemmer(text):
+    lanc = LancasterStemmer()
+    tokenized  = word_tokenize(text)
+    stemmed    = [lanc.stem(word) for word in tokenized]
+    return ' '.join(stemmed)
+
+## Lemmatize
+def lemmatizer(text):
+    wordnet_lemmatizer = WordNetLemmatizer()
+    tokenized  = word_tokenize(text)
+    stemmed    = [wordnet_lemmatizer.lemmatize(word) for word in tokenized]
+    return ' '.join(stemmed)
+    
+lemmatizer
+funcs = [
+    remove_urls, 
+    remove_punctuation,
+    remove_stop_words, 
+    remove_mentions, 
+    remove_spaces, 
+    remove_double_quotes, 
+    remove_single_quotes,
+    remove_emoji,
+    lower_case_text,
+    trim, 
+#     porter_stemmer
+    lemmatizer
+]
+
+df_clean_comments             = df.copy()
+df_clean_comments['old_body'] = df_clean_comments['body']
+
+for fun in funcs:
+    df_clean_comments['body'] = df_clean_comments['body'].apply(fun)
+    
+df_clean_comments.reset_index(inplace=True)
+df_clean_comments.drop(['index'], axis=1, inplace=True)
+df_clean_comments.head(3)
+
+df_clean_comments['vader']     = [analyzer.polarity_scores(unidecode(i)) for i in df_clean_comments.body]
+df_clean_comments['neg']       = [i['neg'] for i in df_clean_comments['vader']]
+df_clean_comments['neu']       = [i['neu'] for i in df_clean_comments['vader']]
+df_clean_comments['pos']       = [i['pos'] for i in df_clean_comments['vader']]
+df_clean_comments['compound']  = [i['compound'] for i in df_clean_comments['vader']]
+df_clean_comments              = df_clean_comments.sort_values(by=['score', 'compound'], ascending=False)
+features                       = [
+    'search_q', 'id', 'parent_id', 'retrieved_on', 'subreddit', 'subreddit_id',
+    'author', 'score', 'permalink', 'date_on', 'old_body', 'body', 
+    'vader', 'neg', 'neu', 'pos', 'compound'
+]
+df_clean_comments              = df_clean_comments[features]
+df_clean_comments              = df_clean_comments[~df_clean_comments['body'].str.contains("deleted|removed")]
+print(f'Retrieved {df_clean_comments.shape[0]} clean items')
+df_clean_comments.head(3)
+
+df_clean_comments.to_csv(
+    f"{path_raw}wallstreetbets_comments_clean.csv", 
+    header=True, index=False
+)
+df_clean_comments.to_pickle( f"{path_raw}wallstreetbets_comments_clean.pkl")
